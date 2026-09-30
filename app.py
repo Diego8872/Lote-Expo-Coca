@@ -378,6 +378,9 @@ def generar_excel(filas):
 st.title("📦 Armado de LOTE — Coca-Cola")
 st.caption("Genera el Excel LOTE a partir de Orígenes, Picking List, Factura Final, Exportaciones y DJO.")
 
+referencia = st.text_input("Referencia (nombre del archivo de salida)", placeholder="Ej: 26001EC01000123A").strip()
+ref_archivo = re.sub(r'[\\/:*?"<>|]+', "-", referencia)
+
 c1, c2 = st.columns(2)
 with c1:
     f_orig = st.file_uploader("Orígenes (Excel)", type=["xlsx"])
@@ -387,24 +390,28 @@ with c2:
     f_expo = st.file_uploader("Exportaciones - Descripción y NCM (Excel)", type=["xlsx"])
     f_djo = st.file_uploader("DJO (Excel)", type=["xlsx"])
 
-if all([f_orig, f_pick, f_fact, f_expo, f_djo]):
-    if st.button("Generar LOTE", type="primary", use_container_width=True):
-        with st.spinner("Procesando documentos..."):
-            try:
-                origenes = leer_origenes(f_orig.getvalue())
-                kits = leer_picking(f_pick.getvalue())
-                factura = leer_factura(f_fact.getvalue())
-                export = leer_exportaciones(f_expo.getvalue())
-                djo = leer_djo(f_djo.getvalue())
-                filas, avisos, sobrantes = armar_lote(origenes, kits, factura, export, djo)
-                st.session_state["lote_filas"] = filas
-                st.session_state["lote_avisos"] = avisos
-                st.session_state["lote_sobrantes"] = sobrantes
-                st.session_state["lote_kits"] = kits
-            except Exception as e:
-                st.error(f"Error al procesar: {e}")
-else:
-    st.info("Subí los 5 archivos para continuar.")
+faltan = [n for n, f in [("Orígenes", f_orig), ("Picking List", f_pick), ("Factura Final", f_fact),
+                          ("Exportaciones", f_expo), ("DJO", f_djo)] if not f]
+if not referencia:
+    faltan.append("Referencia")
+if faltan:
+    st.info("Falta completar: " + ", ".join(faltan))
+
+if st.button("Generar LOTE", type="primary", use_container_width=True, disabled=bool(faltan)):
+    with st.spinner("Procesando documentos..."):
+        try:
+            origenes = leer_origenes(f_orig.getvalue())
+            kits = leer_picking(f_pick.getvalue())
+            factura = leer_factura(f_fact.getvalue())
+            export = leer_exportaciones(f_expo.getvalue())
+            djo = leer_djo(f_djo.getvalue())
+            filas, avisos, sobrantes = armar_lote(origenes, kits, factura, export, djo)
+            st.session_state["lote_filas"] = filas
+            st.session_state["lote_avisos"] = avisos
+            st.session_state["lote_sobrantes"] = sobrantes
+            st.session_state["lote_kits"] = kits
+        except Exception as e:
+            st.error(f"Error al procesar: {e}")
 
 if st.session_state.get("lote_filas"):
     filas = st.session_state["lote_filas"]
@@ -432,9 +439,10 @@ if st.session_state.get("lote_filas"):
                 st.write("• " + a)
 
     st.download_button(
-        "⬇️ Descargar LOTE.xlsx",
+        f"⬇️ Descargar LOTE_{ref_archivo}.xlsx" if ref_archivo else "⬇️ Descargar LOTE (falta referencia)",
         data=generar_excel(filas),
-        file_name="LOTE.xlsx",
+        file_name=f"LOTE_{ref_archivo}.xlsx" if ref_archivo else "LOTE.xlsx",
+        disabled=not ref_archivo,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary",
         use_container_width=True,
