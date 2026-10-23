@@ -15,6 +15,8 @@ try:
 except ImportError:
     import fitz
 
+import msoffcrypto
+
 st.set_page_config(page_title="LOTE Coca-Cola", page_icon="📦", layout="wide")
 
 # =====================================================================
@@ -147,6 +149,33 @@ def a_num_ar(s):
     if not re.fullmatch(r"[\d.]+,\d+|\d+", s):
         return None
     return float(s.replace(".", "").replace(",", "."))
+
+
+def clave_excel():
+    """Contraseña del Excel de Exportaciones, guardada en los Secrets de Streamlit (nunca en el código)."""
+    try:
+        return st.secrets.get("EXPO_PASSWORD")
+    except Exception:
+        return None
+
+
+def desbloquear_excel(file_bytes, password=None):
+    """Si el Excel tiene contraseña de apertura, lo desencripta en memoria.
+    Si no tiene contraseña, lo devuelve tal cual."""
+    archivo = msoffcrypto.OfficeFile(io.BytesIO(file_bytes))
+    if not archivo.is_encrypted():
+        return file_bytes
+    if not password:
+        raise ValueError("El Excel de Exportaciones tiene contraseña y no está configurada "
+                         "(EXPO_PASSWORD en los Secrets de Streamlit).")
+    salida = io.BytesIO()
+    try:
+        archivo.load_key(password=password)
+        archivo.decrypt(salida)
+    except Exception:
+        raise ValueError("No se pudo abrir el Excel de Exportaciones: la contraseña configurada "
+                         "no es correcta. Revisá EXPO_PASSWORD en los Secrets de Streamlit.")
+    return salida.getvalue()
 
 
 def a_float(x):
@@ -554,7 +583,7 @@ if st.button("Generar LOTE", type="primary", use_container_width=True, disabled=
             origenes = leer_origenes(f_orig.getvalue())
             kits = leer_picking(f_pick.getvalue())
             factura = leer_factura(f_fact.getvalue())
-            export = leer_exportaciones(f_expo.getvalue())
+            export = leer_exportaciones(desbloquear_excel(f_expo.getvalue(), clave_excel()))
             djo = leer_djo(f_djo.getvalue())
             filas, avisos, sobrantes = armar_lote(origenes, kits, factura, export, djo)
             st.session_state["lote_filas"] = filas
